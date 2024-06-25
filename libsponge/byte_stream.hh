@@ -2,6 +2,7 @@
 #define SPONGE_LIBSPONGE_BYTE_STREAM_HH
 
 #include <string>
+#include <vector>
 
 //! \brief An in-order byte stream.
 
@@ -18,7 +19,7 @@ class ByteStream {
     // different approaches.
 
     bool _error{};  //!< Flag indicating that the stream suffered an error.
-    std::string str{};
+    std::vector<std::string> str_vec{};
     bool has_closed = false;
     uint64_t cumulatively_bytes_writen = 0;
     uint64_t cumulatively_bytes_popped = 0;
