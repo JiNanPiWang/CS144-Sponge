@@ -25,12 +25,24 @@ class TCPSender {
 
     //! retransmission timer for the connection
     unsigned int _initial_retransmission_timeout;
+    unsigned int retrans_cnt = 0;
+    unsigned int retrans_timer = 0;
+    unsigned int retrans_RTO = 0;
 
     //! outgoing stream of bytes that have not yet been sent
     ByteStream _stream;
 
     //! the (absolute) sequence number for the next byte to be sent
     uint64_t _next_seqno{0};
+
+    uint32_t window_size_ = UINT32_MAX; // 实际上只能有uint16，但是这样就可以判断是否被初始化了
+    bool has_SYN = false;
+    WrappingInt32 seqno_{0};
+    WrappingInt32 ackno_{0};
+
+    std::queue<TCPSegment> flying_segments{};
+    bool had_FIN = false;
+    bool zero_window = false;
 
   public:
     //! Initialize a TCPSender
@@ -87,6 +99,7 @@ class TCPSender {
     //! \brief relative seqno for the next byte to be sent
     WrappingInt32 next_seqno() const { return wrap(_next_seqno, _isn); }
     //!@}
+    uint64_t unwrap_seq_num(const WrappingInt32 &num) const;
 };
 
 #endif  // SPONGE_LIBSPONGE_TCP_SENDER_HH
