@@ -20,7 +20,11 @@ using namespace std;
 TCPSender::TCPSender(const size_t capacity, const uint16_t retx_timeout, const std::optional<WrappingInt32> fixed_isn)
     : _isn(fixed_isn.value_or(WrappingInt32{random_device()()}))
     , _initial_retransmission_timeout{retx_timeout}
-    , _stream(capacity) {}
+    , _stream(capacity)
+{
+    seqno_ = _isn;
+    ackno_ = _isn;
+}
 
 uint64_t TCPSender::bytes_in_flight() const {
     return unwrap_seq_num(seqno_) - unwrap_seq_num(ackno_);
