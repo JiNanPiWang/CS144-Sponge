@@ -24,6 +24,7 @@ TCPSender::TCPSender(const size_t capacity, const uint16_t retx_timeout, const s
 {
     seqno_ = _isn;
     ackno_ = _isn;
+    retrans_RTO = retx_timeout;
 }
 
 uint64_t TCPSender::bytes_in_flight() const {
