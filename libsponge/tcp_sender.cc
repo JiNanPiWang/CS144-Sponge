@@ -80,9 +80,11 @@ void TCPSender::fill_window()
         // 已经被关闭了，准备FIN，且有空间发FIN；如果buffer大于等于window，那就是普通情况，等一下再发FIN
         // FIN不占payload的size，但是占window
         // 需要考虑MAX_PAYLOAD_SIZE，要不然一个10000大小的payload，分成10次发，会每次都带FIN
+
+        // SPONGE
         if ( _stream.input_ended() &&
-            _stream.buffer_size() < window_size_ &&
-            _stream.buffer_size() - bytes_in_flight() <= TCPConfig::MAX_PAYLOAD_SIZE )
+            _stream.buffer_size() + bytes_in_flight() < window_size_ &&
+            _stream.buffer_size() <= TCPConfig::MAX_PAYLOAD_SIZE )
         {
             // 测试会调用close方法，就关闭了
             if ( had_FIN ) // 发过了就不发了
@@ -92,18 +94,19 @@ void TCPSender::fill_window()
         }
         
         // start from last byte + 1，但是如果Bytestream里面只有SYN，那就提取不出来内容，需要取min得到0
-        auto push_pos = min(_stream.buffer_size(), bytes_in_flight());
         // push的数量，现在缓存了多少个减去发出还没确认的个数，bytes_buffered肯定是>=bytes_in_flight的
         // 同时循环也确定了bytes_in_flight() < window_size_，否则不进行push操作
         // 减to_trans.SYN的原因是可能SYN和data一起，会占一个位置
-        auto push_num = _stream.buffer_size() - bytes_in_flight();
+        auto push_num = _stream.buffer_size();
         push_num = min( push_num, window_size_ - bytes_in_flight() - to_trans.SYN);
         push_num = min( push_num, TCPConfig::MAX_PAYLOAD_SIZE );
 
         if ( push_num + to_trans.SYN + to_trans.FIN == 0) // 如果所有内容全空，规格错误，就不发送
             return;
 
-        to_trans.payload = string( _stream.peek_output(push_pos + push_num + 1).substr( push_pos, push_num ) );
+        string pop_str = _stream.read(push_num);
+
+        to_trans.payload = pop_str;
 
         seqno_ = seqno_ + to_trans.payload.size() + to_trans.SYN + to_trans.FIN;
         _next_seqno += to_trans.payload.size() + to_trans.SYN + to_trans.FIN;
@@ -143,9 +146,10 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         if (unwrap_seq_num(ackno_) == 0)
             ackno_ = ackno_ + 1;
 
-        auto pop_num = min( static_cast<uint64_t>( unwrap_seq_num(ackno) - unwrap_seq_num(ackno_) ),
-                           _stream.buffer_size() );
-        _stream.pop_output( pop_num );
+        // Sponge不需要
+        // auto pop_num = min( static_cast<uint64_t>( unwrap_seq_num(ackno) - unwrap_seq_num(ackno_) ),
+        //                    _stream.buffer_size() );
+        // _stream.pop_output( pop_num );
 
         ackno_ = ackno;
 
