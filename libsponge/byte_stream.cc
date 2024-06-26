@@ -17,85 +17,54 @@ ByteStream::ByteStream(const size_t capacity) : capacity_(capacity) {}
 size_t ByteStream::write(const string &data) {
     if (data.empty() || input_ended())
         return 0;
-    auto write_num = min(data.size(), this->remaining_capacity());
-    this->cumulatively_bytes_writen += write_num;
-    this->str_vec.emplace_back(data.substr( 0, write_num)) ;
-    return write_num;
+    if ( data.size() > this->remaining_capacity() )
+    {
+        auto write_num = this->remaining_capacity();
+        this->cumulatively_bytes_writen += this->remaining_capacity();
+        this->str += data.substr( 0, this->remaining_capacity() );
+        return write_num;
+    }
+    else
+    {
+        this->cumulatively_bytes_writen += data.size();
+        this->str += data;
+        return data.size();
+    }
 }
 
 //! \param[in] len bytes will be copied from the output side of the buffer
 string ByteStream::peek_output(const size_t len) const {
-    string ans;
-    if (str_vec.empty())
-        return ans;
-    if (buffer_size() <= len)
+    if (buffer_size() < len)
     {
-        for (auto &x : str_vec)
-            ans += x;
-        return ans;
+        return str;
     }
-    size_t pop_len = 0;
-    size_t pop_pos = 0;
-    while (pop_pos < str_vec.size() && pop_len + str_vec[pop_pos].size() < len)
+    else
     {
-        pop_len += str_vec[pop_pos].size();
-        ans += str_vec[pop_pos];
-        pop_pos++;
+        return str.substr(0, len);
     }
-    ans += str_vec[0].substr(len - pop_len);
-    return ans;
 }
 
 //! \param[in] len bytes will be removed from the output side of the buffer
 void ByteStream::pop_output(const size_t len) {
-    if (str_vec.empty())
-        return;
-    if (buffer_size() <= len)
-    {
-        cumulatively_bytes_popped += buffer_size();
-        str_vec.clear();
-        return;
-    }
-    size_t pop_len = 0;
-    size_t pop_pos = 0;
-    while (pop_pos < str_vec.size() && pop_len + str_vec[pop_pos].size() < len)
-    {
-        pop_len += str_vec[pop_pos].size();
-        ++pop_pos;
-    }
-    str_vec.erase(str_vec.begin(), str_vec.begin() + pop_pos);
-    str_vec[0] = str_vec[0].substr(len - pop_len);
-    cumulatively_bytes_popped += len;
+    cumulatively_bytes_popped += min(str.size(), len);
+    str = str.substr(len);
 }
 
 //! Read (i.e., copy and then pop) the next "len" bytes of the stream
 //! \param[in] len bytes will be popped and returned
 //! \returns a string
 std::string ByteStream::read(const size_t len) {
-    string ans;
-    if (str_vec.empty())
-        return ans;
+    auto s = str;
     if (buffer_size() <= len)
     {
-        for (auto &x : str_vec)
-            ans += x;
-        cumulatively_bytes_popped += buffer_size();
-        str_vec.clear();
-        return ans;
+        pop_output(buffer_size());
+        return s;
     }
-    size_t pop_len = 0;
-    size_t pop_pos = 0;
-    while (pop_pos < str_vec.size() && pop_len + str_vec[pop_pos].size() < len)
+    else
     {
-        pop_len += str_vec[pop_pos].size();
-        ans += str_vec[pop_pos];
-        pop_pos++;
+        pop_output(len);
+        return s.substr(0, len);
     }
-    str_vec.erase(str_vec.begin(), str_vec.begin() + pop_pos);
-    ans += str_vec[0].substr(len - pop_len);
-    str_vec[0] = str_vec[0].substr(len - pop_len);
-    cumulatively_bytes_popped += len;
-    return ans;
 }
 
 void ByteStream::end_input() {
@@ -107,14 +76,11 @@ bool ByteStream::input_ended() const {
 }
 
 size_t ByteStream::buffer_size() const {
-    size_t sum = 0;
-    for (auto &x : str_vec)
-        sum += x.size();
-    return sum;
+    return str.size();
 }
 
 bool ByteStream::buffer_empty() const {
-    return str_vec.empty();
+    return str.empty();
 }
 
 bool ByteStream::eof() const {

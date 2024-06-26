@@ -52,7 +52,7 @@ struct TCPSenderMessage
 
         t_seg.header() = head;
         auto s = payload;
-        t_seg.parse(Buffer{std::move(s)});
+        t_seg.payload() = Buffer{std::move(s)};
         return t_seg;
     }
 };
@@ -105,7 +105,8 @@ void TCPSender::fill_window()
         to_trans.payload = string( _stream.peek_output(push_pos + push_num + 1).substr( push_pos, push_num ) );
 
         seqno_ = seqno_ + to_trans.payload.size() + to_trans.SYN + to_trans.FIN;
-        _next_seqno = unwrap_seq_num(seqno_);
+        _next_seqno += to_trans.payload.size() + to_trans.SYN + to_trans.FIN;
+
 
         _segments_out.push(to_trans.to_TCPSeg());
         flying_segments.push( to_trans.to_TCPSeg() );
