@@ -19,6 +19,10 @@ class TCPReceiver {
 
     //! The maximum number of bytes we'll store.
     size_t _capacity;
+    WrappingInt32 ISN{0};
+    std::optional<WrappingInt32> ackno_base {std::nullopt}; // ISN + SYN + FIN，剩下的是加写成功了几个
+    uint64_t absolute_seqno {0};
+    bool fin = false;
 
   public:
     //! \brief Construct a TCP receiver
