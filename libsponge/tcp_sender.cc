@@ -33,10 +33,10 @@ uint64_t TCPSender::bytes_in_flight() const {
 
 void TCPSender::fill_window() 
 {
-    while (bytes_in_flight() < window_size_ || (!had_FIN && _stream.input_ended()) )
+    while (bytes_in_flight() < window_size_ || (now_status != TCPStatus::CLOSED && _stream.input_ended()) )
     {
         // FIN会是最后一个消息
-        if (had_FIN)
+        if (now_status == TCPStatus::CLOSED)
             return;
         TCPSenderMessage to_trans { seqno_, false, "", false, false };
         if ( _stream.error() )
@@ -55,6 +55,12 @@ void TCPSender::fill_window()
             to_trans.ACK = true;
             now_status = TCPStatus::ESTABLISHED;
         }
+        else if (now_status == TCPStatus::FIN_WAIT_1)
+        {
+            // 客户端发送FIN，还确认了已经接收并处理了服务器到目前为止发送的所有数据，也就是ACK=1。
+            to_trans.FIN = true;
+            to_trans.ACK = true;
+        }
         // 已经被关闭了，准备FIN，且有空间发FIN；如果buffer大于等于window，那就是普通情况，等一下再发FIN
         // FIN不占payload的size，但是占window
         // 需要考虑MAX_PAYLOAD_SIZE，要不然一个10000大小的payload，分成10次发，会每次都带FIN
@@ -65,10 +71,8 @@ void TCPSender::fill_window()
             _stream.buffer_size() <= TCPConfig::MAX_PAYLOAD_SIZE )
         {
             // 测试会调用close方法，就关闭了
-            if ( had_FIN ) // 发过了就不发了
-                return;
             to_trans.FIN = true;
-            had_FIN = true;
+            now_status = TCPStatus::CLOSED;
         }
         
         // start from last byte + 1，但是如果Bytestream里面只有SYN，那就提取不出来内容，需要取min得到0

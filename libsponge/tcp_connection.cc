@@ -27,8 +27,6 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
     _receiver.segment_received(seg);
     _sender.fill_window();
 
-    auto s = TCPState::state_summary(_sender);
-
     // 接收完对方发的消息，我们就发一条确认信息
     if (!_sender.segments_out().empty())
     {
@@ -53,7 +51,20 @@ size_t TCPConnection::write(const string &data) {
 //! \param[in] ms_since_last_tick number of milliseconds since the last call to this method
 void TCPConnection::tick(const size_t ms_since_last_tick) { DUMMY_CODE(ms_since_last_tick); }
 
-void TCPConnection::end_input_stream() {}
+// close的时候调用它
+void TCPConnection::end_input_stream() {
+    // 我发送了就是FIN_WAIT_1，其他的等接收了再说
+    _sender.change_status(TCPStatus::FIN_WAIT_1);
+    _sender.fill_window();
+
+    // connection需要整合sender和receiver的内容，具体看lab4 pdf的Fig1
+    auto seg_to_send = _sender.segments_out().front();
+    seg_to_send.header().ackno = this->_receiver.ackno().value();
+    seg_to_send.header().win = this->_receiver.window_size();
+
+    _segments_out.push(seg_to_send);
+    _sender.segments_out().pop();
+}
 
 void TCPConnection::connect() {
     _sender.fill_window();
