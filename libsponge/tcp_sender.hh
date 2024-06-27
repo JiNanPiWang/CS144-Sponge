@@ -36,7 +36,8 @@ class TCPSender {
     uint64_t _next_seqno{0};
 
     uint32_t window_size_ = UINT32_MAX; // 实际上只能有uint16，但是这样就可以判断是否被初始化了
-    bool has_SYN = false;
+    bool has_SYN = false; // 自己发没发SYN
+    TCPStatus now_status = TCPStatus::LISTEN;
     WrappingInt32 seqno_{0};
     WrappingInt32 ackno_{0};
 
@@ -100,6 +101,8 @@ class TCPSender {
     WrappingInt32 next_seqno() const { return wrap(_next_seqno, _isn); }
     //!@}
     uint64_t unwrap_seq_num(const WrappingInt32 &num) const;
+
+    void change_status(TCPStatus status);
 };
 
 

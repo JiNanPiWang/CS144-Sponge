@@ -41,13 +41,19 @@ void TCPSender::fill_window()
         TCPSenderMessage to_trans { seqno_, false, "", false, false };
         if ( _stream.error() )
             to_trans.RST = true;
-        if ( !has_SYN ) // 还没开始，准备SYN
+        if ( now_status == TCPStatus::LISTEN ) // 还没开始，准备SYN
         {
             to_trans.seqno = _isn;
             to_trans.SYN = true;
             if (window_size_ == UINT32_MAX) // 如果没被初始化，就初始化
                 window_size_ = 1;
-            has_SYN = true;
+            // has_SYN = true;
+            now_status = TCPStatus::SYN_SENT;
+        }
+        else if (now_status == TCPStatus::SYN_RCVD) // 接收到ack+syn(ack)，发送ack(ack+syn)
+        {
+            to_trans.ACK = true;
+            now_status = TCPStatus::ESTABLISHED;
         }
         // 已经被关闭了，准备FIN，且有空间发FIN；如果buffer大于等于window，那就是普通情况，等一下再发FIN
         // FIN不占payload的size，但是占window
@@ -73,7 +79,7 @@ void TCPSender::fill_window()
         push_num = min( push_num, window_size_ - bytes_in_flight() - to_trans.SYN);
         push_num = min( push_num, TCPConfig::MAX_PAYLOAD_SIZE );
 
-        if ( push_num + to_trans.SYN + to_trans.FIN == 0) // 如果所有内容全空，规格错误，就不发送
+        if ( push_num + to_trans.SYN + to_trans.FIN + to_trans.ACK == 0) // 如果所有内容全空，规格错误，就不发送
             return;
 
         string pop_str = _stream.read(push_num);
@@ -93,8 +99,7 @@ void TCPSender::fill_window()
 //! \param window_size The remote receiver's advertised window size
 void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_size) {
     // receive后，测试的调用会自动触发push
-    if (has_SYN) {
-
+    if (now_status != TCPStatus::LISTEN) {
         auto &new_ackno = ackno;
         auto &first_fly_ele = flying_segments.front();
         // ackno不能大于seqno
@@ -185,4 +190,8 @@ uint64_t TCPSender::unwrap_seq_num( const WrappingInt32& num ) const
 {
     // or this->input_.writer().bytes_pushed()
     return unwrap(num, _isn, _stream.bytes_read());
+}
+
+void TCPSender::change_status(TCPStatus status) {
+    now_status = status;
 }

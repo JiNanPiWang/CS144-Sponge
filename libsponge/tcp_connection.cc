@@ -20,7 +20,28 @@ size_t TCPConnection::unassembled_bytes() const { return {}; }
 
 size_t TCPConnection::time_since_last_segment_received() const { return {}; }
 
-void TCPConnection::segment_received(const TCPSegment &seg) { DUMMY_CODE(seg); }
+void TCPConnection::segment_received(const TCPSegment &seg) {
+    if (seg.header().syn)
+        _sender.change_status(TCPStatus::SYN_RCVD);
+    _sender.ack_received(seg.header().ackno, seg.header().win);
+    _receiver.segment_received(seg);
+    _sender.fill_window();
+
+    auto s = TCPState::state_summary(_sender);
+
+    // 接收完对方发的消息，我们就发一条确认信息
+    if (!_sender.segments_out().empty())
+    {
+        auto to_send_seg = _sender.segments_out().front();
+        _sender.segments_out().pop();
+        // 如果对方是syn，我们就ack一下
+        if (seg.header().syn)
+            to_send_seg.header().ack = true;
+        to_send_seg.header().ackno = _receiver.ackno().value();
+
+        _segments_out.push(to_send_seg);
+    }
+}
 
 bool TCPConnection::active() const { return {}; }
 
