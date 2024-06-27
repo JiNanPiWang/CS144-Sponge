@@ -31,34 +31,6 @@ uint64_t TCPSender::bytes_in_flight() const {
     return unwrap_seq_num(seqno_) - unwrap_seq_num(ackno_);
 }
 
-struct TCPSenderMessage
-{
-    WrappingInt32 seqno { 0 };
-    bool SYN {};
-    std::string payload {};
-    bool FIN {};
-    bool RST {};
-    // How many sequence numbers does this segment use?
-    size_t sequence_length() const { return SYN + payload.size() + FIN; }
-
-    TCPSegment to_TCPSeg() const
-    {
-        TCPSegment t_seg;
-        TCPHeader head;
-
-        head.seqno = seqno;
-        head.syn = SYN;
-        head.fin = FIN;
-        head.rst = RST;
-
-        t_seg.header() = head;
-        auto s = payload;
-        t_seg.payload() = Buffer{std::move(s)};
-        return t_seg;
-    }
-};
-
-
 void TCPSender::fill_window() 
 {
     while (bytes_in_flight() < window_size_ || (!had_FIN && _stream.input_ended()) )
