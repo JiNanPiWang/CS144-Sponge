@@ -3,6 +3,7 @@
 
 #include "address.hh"
 #include "wrapping_integers.hh"
+#include "tcp_segment.hh"
 
 #include <cstddef>
 #include <cstdint>
@@ -30,6 +31,51 @@ class FdAdapterConfig {
 
     uint16_t loss_rate_dn = 0;  //!< Downlink loss rate (for LossyFdAdapter)
     uint16_t loss_rate_up = 0;  //!< Uplink loss rate (for LossyFdAdapter)
+};
+
+struct TCPSenderMessage
+{
+    WrappingInt32 seqno { 0 };
+    bool SYN {};
+    std::string payload {};
+    bool FIN {};
+    bool RST {};
+    bool ACK {false};
+    // How many sequence numbers does this segment use?
+    size_t sequence_length() const { return SYN + payload.size() + FIN; }
+
+    TCPSegment to_TCPSeg() const
+    {
+        TCPSegment t_seg;
+        TCPHeader head;
+
+        head.seqno = seqno;
+        head.syn = SYN;
+        head.fin = FIN;
+        head.rst = RST;
+        head.ack = ACK;
+
+        t_seg.header() = head;
+        auto s = payload;
+        t_seg.payload() = Buffer{std::move(s)};
+        return t_seg;
+    }
+};
+
+//! \brief Official state names from the [TCP](\ref rfc::rfc793) specification
+enum class TCPStatus {
+    LISTEN = 0,   //!< Listening for a peer to connect
+    SYN_RCVD,     //!< Got the peer's SYN
+    SYN_SENT,     //!< Sent a SYN to initiate a connection
+    ESTABLISHED,  //!< Three-way handshake complete
+    CLOSE_WAIT,   //!< Remote side has sent a FIN, connection is half-open
+    LAST_ACK,     //!< Local side sent a FIN from CLOSE_WAIT, waiting for ACK
+    FIN_WAIT_1,   //!< Sent a FIN to the remote side, not yet ACK'd
+    FIN_WAIT_2,   //!< Received an ACK for previously-sent FIN
+    CLOSING,      //!< Received a FIN just after we sent one
+    TIME_WAIT,    //!< Both sides have sent FIN and ACK'd, waiting for 2 MSL
+    CLOSED,       //!< A connection that has terminated normally
+    RESET,        //!< A connection that terminated abnormally
 };
 
 #endif  // SPONGE_LIBSPONGE_TCP_CONFIG_HH
