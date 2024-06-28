@@ -66,6 +66,7 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
     if (_sender.get_retrans_timer() >= _cfg.rt_timeout * 10)
     {
         _linger_after_streams_finish = false;
+        _sender.change_status(TCPStatus::CLOSED);
     }
 }
 

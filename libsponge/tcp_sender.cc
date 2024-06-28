@@ -33,11 +33,11 @@ uint64_t TCPSender::bytes_in_flight() const {
 
 void TCPSender::fill_window() 
 {
-    while (bytes_in_flight() < window_size_ || (now_status != TCPStatus::TIME_WAIT && _stream.input_ended()) )
+    while (bytes_in_flight() < window_size_ || (now_status != TCPStatus::CLOSED && _stream.input_ended()) )
     {
         // FIN会是最后一个消息
         // TODO: CLOSED需不需要考虑？
-        if (now_status == TCPStatus::TIME_WAIT)
+        if (now_status == TCPStatus::CLOSED)
             return;
         TCPSenderMessage to_trans { seqno_, false, "", false, false };
         if ( _stream.error() )
@@ -81,7 +81,7 @@ void TCPSender::fill_window()
         {
             // 测试会调用close方法，就关闭了
             to_trans.FIN = true;
-            now_status = TCPStatus::TIME_WAIT;
+            now_status = TCPStatus::CLOSED;
         }
         
         // start from last byte + 1，但是如果Bytestream里面只有SYN，那就提取不出来内容，需要取min得到0
