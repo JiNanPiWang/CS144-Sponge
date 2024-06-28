@@ -23,6 +23,17 @@ size_t TCPConnection::time_since_last_segment_received() const { return {}; }
 void TCPConnection::segment_received(const TCPSegment &seg) {
     if (seg.header().syn)
         _sender.change_status(TCPStatus::SYN_RCVD);
+    if (seg.header().ack)
+    {
+        if (_sender.get_status() == TCPStatus::FIN_WAIT_1)
+            _sender.change_status(TCPStatus::FIN_WAIT_2);
+    }
+    if (seg.header().fin)
+    {
+        // TODO: 被动关闭待补充
+        if (_sender.get_status() == TCPStatus::FIN_WAIT_2)
+            _sender.change_status(TCPStatus::CLOSING);
+    }
     _sender.ack_received(seg.header().ackno, seg.header().win);
     _receiver.segment_received(seg);
     _sender.fill_window();

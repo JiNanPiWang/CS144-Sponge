@@ -103,6 +103,8 @@ class TCPSender {
     uint64_t unwrap_seq_num(const WrappingInt32 &num) const;
 
     void change_status(TCPStatus status);
+
+    TCPStatus get_status() const;
 };
 
 

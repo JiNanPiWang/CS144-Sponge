@@ -33,10 +33,11 @@ uint64_t TCPSender::bytes_in_flight() const {
 
 void TCPSender::fill_window() 
 {
-    while (bytes_in_flight() < window_size_ || (now_status != TCPStatus::CLOSED && _stream.input_ended()) )
+    while (bytes_in_flight() < window_size_ || (now_status != TCPStatus::TIME_WAIT && _stream.input_ended()) )
     {
         // FIN会是最后一个消息
-        if (now_status == TCPStatus::CLOSED)
+        // TODO: CLOSED需不需要考虑？
+        if (now_status == TCPStatus::TIME_WAIT)
             return;
         TCPSenderMessage to_trans { seqno_, false, "", false, false };
         if ( _stream.error() )
@@ -61,18 +62,25 @@ void TCPSender::fill_window()
             to_trans.FIN = true;
             to_trans.ACK = true;
         }
+        else if (now_status == TCPStatus::CLOSING)
+        {
+            to_trans.ACK = true;
+            // 在这最后一个ACK发出后，客户端通常会进入TIME_WAIT状态，等待足够的时间以确保服务器收到了最后的确认，然后最终关闭连接。
+            now_status = TCPStatus::TIME_WAIT;
+        }
         // 已经被关闭了，准备FIN，且有空间发FIN；如果buffer大于等于window，那就是普通情况，等一下再发FIN
         // FIN不占payload的size，但是占window
         // 需要考虑MAX_PAYLOAD_SIZE，要不然一个10000大小的payload，分成10次发，会每次都带FIN
 
         // SPONGE
+        // TODO: 这里是不是冗余？
         if ( _stream.input_ended() &&
             _stream.buffer_size() + bytes_in_flight() < window_size_ &&
             _stream.buffer_size() <= TCPConfig::MAX_PAYLOAD_SIZE )
         {
             // 测试会调用close方法，就关闭了
             to_trans.FIN = true;
-            now_status = TCPStatus::CLOSED;
+            now_status = TCPStatus::TIME_WAIT;
         }
         
         // start from last byte + 1，但是如果Bytestream里面只有SYN，那就提取不出来内容，需要取min得到0
@@ -96,6 +104,10 @@ void TCPSender::fill_window()
 
         _segments_out.push(to_trans.to_TCPSeg());
         flying_segments.push( to_trans.to_TCPSeg() );
+
+        // 如果不是正常发送情况，那我们不需要重复发送
+        if (now_status != TCPStatus::ESTABLISHED)
+            break;
     }
 }
 
@@ -125,12 +137,12 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
 
         // 如果发过来的不是对SYN的ACK，我们才pop，syn和data和fin一起
         if (unwrap_seq_num(ackno_) == 0)
-            ackno_ = ackno_ + 1;
-
-        // Sponge不需要
-        // auto pop_num = min( static_cast<uint64_t>( unwrap_seq_num(ackno) - unwrap_seq_num(ackno_) ),
-        //                    _stream.buffer_size() );
-        // _stream.pop_output( pop_num );
+        {
+            // ackno_ = ackno_ + 1;
+            // 如果connection没有改变状态，就是默认情况，直接连接
+            if (now_status != TCPStatus::SYN_RCVD)
+                now_status = TCPStatus::ESTABLISHED;
+        }
 
         ackno_ = ackno;
 
@@ -198,4 +210,8 @@ uint64_t TCPSender::unwrap_seq_num( const WrappingInt32& num ) const
 
 void TCPSender::change_status(TCPStatus status) {
     now_status = status;
+}
+
+TCPStatus TCPSender::get_status() const {
+    return now_status;
 }
