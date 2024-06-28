@@ -67,14 +67,15 @@ void TCPSender::fill_window()
             to_trans.ACK = true;
             // 在这最后一个ACK发出后，客户端通常会进入TIME_WAIT状态，等待足够的时间以确保服务器收到了最后的确认，然后最终关闭连接。
             now_status = TCPStatus::TIME_WAIT;
+            _stream.end_input();
         }
         // 已经被关闭了，准备FIN，且有空间发FIN；如果buffer大于等于window，那就是普通情况，等一下再发FIN
         // FIN不占payload的size，但是占window
         // 需要考虑MAX_PAYLOAD_SIZE，要不然一个10000大小的payload，分成10次发，会每次都带FIN
 
         // SPONGE
-        // TODO: 这里是不是冗余？
-        if ( _stream.input_ended() &&
+        // 普通情况，不是connection
+        else if ( _stream.input_ended() &&
             _stream.buffer_size() + bytes_in_flight() < window_size_ &&
             _stream.buffer_size() <= TCPConfig::MAX_PAYLOAD_SIZE )
         {
@@ -214,4 +215,7 @@ void TCPSender::change_status(TCPStatus status) {
 
 TCPStatus TCPSender::get_status() const {
     return now_status;
+}
+unsigned int TCPSender::get_retrans_timer() const {
+    return retrans_timer;
 }

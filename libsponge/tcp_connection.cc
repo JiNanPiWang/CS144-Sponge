@@ -39,20 +39,20 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
     _sender.fill_window();
 
     // 接收完对方发的消息，我们就发一条确认信息
-    if (!_sender.segments_out().empty())
-    {
-        auto to_send_seg = _sender.segments_out().front();
-        _sender.segments_out().pop();
-        // 如果对方是syn，我们就ack一下
-        if (seg.header().syn)
-            to_send_seg.header().ack = true;
-        to_send_seg.header().ackno = _receiver.ackno().value();
+    auto to_send_seg = _sender.segments_out().front();
+    _sender.segments_out().pop();
+    // 如果对方是syn，我们就ack一下
+    if (seg.header().syn)
+        to_send_seg.header().ack = true;
+    to_send_seg.header().ackno = _receiver.ackno().value();
 
-        _segments_out.push(to_send_seg);
-    }
+    _segments_out.push(to_send_seg);
 }
 
-bool TCPConnection::active() const { return {}; }
+bool TCPConnection::active() const {
+    auto sta = _sender.get_status();
+    return sta != TCPStatus::CLOSED;
+}
 
 size_t TCPConnection::write(const string &data) {
     DUMMY_CODE(data);
@@ -60,7 +60,14 @@ size_t TCPConnection::write(const string &data) {
 }
 
 //! \param[in] ms_since_last_tick number of milliseconds since the last call to this method
-void TCPConnection::tick(const size_t ms_since_last_tick) { DUMMY_CODE(ms_since_last_tick); }
+void TCPConnection::tick(const size_t ms_since_last_tick) {
+    _sender.tick(ms_since_last_tick);
+    auto x =  this->state();
+    if (_sender.get_retrans_timer() >= _cfg.rt_timeout * 10)
+    {
+        _linger_after_streams_finish = false;
+    }
+}
 
 // close的时候调用它
 void TCPConnection::end_input_stream() {
