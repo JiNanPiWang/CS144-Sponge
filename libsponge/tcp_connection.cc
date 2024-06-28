@@ -42,17 +42,8 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
     }
     _sender.ack_received(seg.header().ackno, seg.header().win);
     _receiver.segment_received(seg);
-    _sender.fill_window();
 
-    // 接收完对方发的消息，我们就发一条确认信息
-    auto to_send_seg = _sender.segments_out().front();
-    _sender.segments_out().pop();
-    // 如果对方是syn，我们就ack一下
-    if (seg.header().syn)
-        to_send_seg.header().ack = true;
-    to_send_seg.header().ackno = _receiver.ackno().value();
-
-    _segments_out.push(to_send_seg);
+    send_front_seg();
 }
 
 bool TCPConnection::active() const {
@@ -81,21 +72,11 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
 void TCPConnection::end_input_stream() {
     // 我发送了就是FIN_WAIT_1，其他的等接收了再说
     _sender.change_status(TCPStatus::FIN_WAIT_1);
-    _sender.fill_window();
-
-    // connection需要整合sender和receiver的内容，具体看lab4 pdf的Fig1
-    auto seg_to_send = _sender.segments_out().front();
-    seg_to_send.header().ackno = this->_receiver.ackno().value();
-    seg_to_send.header().win = this->_receiver.window_size();
-
-    _segments_out.push(seg_to_send);
-    _sender.segments_out().pop();
+    send_front_seg();
 }
 
 void TCPConnection::connect() {
-    _sender.fill_window();
-    _segments_out.push(_sender.segments_out().front());
-    _sender.segments_out().pop();
+    send_front_seg();
 }
 
 TCPConnection::~TCPConnection() {
@@ -108,4 +89,17 @@ TCPConnection::~TCPConnection() {
     } catch (const exception &e) {
         std::cerr << "Exception destructing TCP FSM: " << e.what() << std::endl;
     }
+}
+
+void TCPConnection::send_front_seg() {
+    _sender.fill_window();
+    auto to_send_seg = _sender.segments_out().front();
+    _sender.segments_out().pop();
+
+    // 发送的内容加入receiver
+    if (_receiver.ackno().has_value())
+        to_send_seg.header().ackno = _receiver.ackno().value();
+    to_send_seg.header().win = _receiver.window_size();
+
+    _segments_out.push(to_send_seg);
 }
