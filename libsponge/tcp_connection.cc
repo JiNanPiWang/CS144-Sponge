@@ -50,8 +50,9 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
 }
 
 bool TCPConnection::active() const {
-    auto sta = _sender.get_status();
-    return sta != TCPStatus::CLOSED;
+    // auto sta = _sender.get_status();
+    // return sta != TCPStatus::CLOSED;
+    return _linger_after_streams_finish;
 }
 
 size_t TCPConnection::write(const string &data) {
