@@ -173,7 +173,7 @@ void TCPSender::tick(const size_t ms_since_last_tick)
     if (flying_segments.empty())
         return;
     retrans_timer += ms_since_last_tick;
-    if ( retrans_timer >= retrans_RTO )
+    if ( retrans_timer >= retrans_RTO && now_status != TCPStatus::TIME_WAIT )
     {
         if (window_size_ != 0 && !zero_window) // 重传时间翻倍
             retrans_RTO <<= 1;
