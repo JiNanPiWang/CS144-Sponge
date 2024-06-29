@@ -23,6 +23,8 @@ class TCPConnection {
 
     void send_front_seg(bool without_fill_window = false);
 
+    size_t last_segment_received_time{0};
+
   public:
     //! \name "Input" interface for the writer
     //!@{

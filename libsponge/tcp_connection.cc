@@ -24,9 +24,12 @@ size_t TCPConnection::unassembled_bytes() const {
     return _receiver.unassembled_bytes();
 }
 
-size_t TCPConnection::time_since_last_segment_received() const { return {}; }
+size_t TCPConnection::time_since_last_segment_received() const {
+    return last_segment_received_time;
+}
 
 void TCPConnection::segment_received(const TCPSegment &seg) {
+    last_segment_received_time = 0;
     if (seg.header().syn)
         _sender.change_status(TCPStatus::SYN_RCVD);
     if (seg.header().ack)
@@ -71,6 +74,7 @@ size_t TCPConnection::write(const string &data) {
 
 //! \param[in] ms_since_last_tick number of milliseconds since the last call to this method
 void TCPConnection::tick(const size_t ms_since_last_tick) {
+    last_segment_received_time += ms_since_last_tick;
     _sender.tick(ms_since_last_tick);
     send_front_seg(true);
     if (_sender.get_retrans_timer() >= _cfg.rt_timeout * 10)
