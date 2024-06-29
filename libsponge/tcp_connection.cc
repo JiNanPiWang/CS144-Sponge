@@ -31,14 +31,17 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
         _sender.change_status(TCPStatus::SYN_RCVD);
     if (seg.header().ack)
     {
-        if (_sender.get_status() == TCPStatus::FIN_WAIT_1)
+        // 如果对方没有接收到我们的FIN，那么就不能变成FIN_WAIT_2
+        if (_sender.get_status() == TCPStatus::FIN_WAIT_1 && seg.header().ackno == _sender.next_seqno())
             _sender.change_status(TCPStatus::FIN_WAIT_2);
     }
     if (seg.header().fin)
     {
         // TODO: 被动关闭待补充
-        if (_sender.get_status() == TCPStatus::FIN_WAIT_2)
+        if (_sender.get_status() == TCPStatus::FIN_WAIT_2) // 我们发送了
             _sender.change_status(TCPStatus::CLOSING);
+        else // 我们没发送，对面发了FIN
+            _sender.change_status(TCPStatus::CLOSE_WAIT);
     }
     _sender.ack_received(seg.header().ackno, seg.header().win);
     _receiver.segment_received(seg);
@@ -60,7 +63,7 @@ size_t TCPConnection::write(const string &data) {
 //! \param[in] ms_since_last_tick number of milliseconds since the last call to this method
 void TCPConnection::tick(const size_t ms_since_last_tick) {
     _sender.tick(ms_since_last_tick);
-    auto x =  this->state();
+    send_front_seg(true);
     if (_sender.get_retrans_timer() >= _cfg.rt_timeout * 10)
     {
         _linger_after_streams_finish = false;
@@ -71,7 +74,11 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
 // close的时候调用它
 void TCPConnection::end_input_stream() {
     // 我发送了就是FIN_WAIT_1，其他的等接收了再说
-    _sender.change_status(TCPStatus::FIN_WAIT_1);
+    if (_sender.get_status() == TCPStatus::CLOSE_WAIT)
+        _sender.change_status(TCPStatus::LAST_ACK);
+    else
+        _sender.change_status(TCPStatus::FIN_WAIT_1);
+
     send_front_seg();
 }
 
@@ -91,15 +98,19 @@ TCPConnection::~TCPConnection() {
     }
 }
 
-void TCPConnection::send_front_seg() {
-    _sender.fill_window();
-    auto to_send_seg = _sender.segments_out().front();
-    _sender.segments_out().pop();
+void TCPConnection::send_front_seg(bool without_fill_window) {
+    if (!without_fill_window)
+        _sender.fill_window();
+    if (!_sender.segments_out().empty())
+    {
+        auto to_send_seg = _sender.segments_out().front();
+        _sender.segments_out().pop();
 
-    // 发送的内容加入receiver
-    if (_receiver.ackno().has_value())
-        to_send_seg.header().ackno = _receiver.ackno().value();
-    to_send_seg.header().win = _receiver.window_size();
+        // 发送的内容加入receiver
+        if (_receiver.ackno().has_value())
+            to_send_seg.header().ackno = _receiver.ackno().value();
+        to_send_seg.header().win = _receiver.window_size();
 
-    _segments_out.push(to_send_seg);
+        _segments_out.push(to_send_seg);
+    }
 }

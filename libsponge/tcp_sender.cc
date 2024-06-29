@@ -58,8 +58,19 @@ void TCPSender::fill_window()
         }
         else if (now_status == TCPStatus::FIN_WAIT_1)
         {
-            // 客户端发送FIN，还确认了已经接收并处理了服务器到目前为止发送的所有数据，也就是ACK=1。
+            // 我们主动发送FIN，还确认了已经接收并处理了服务器到目前为止发送的所有数据，也就是ACK=1。
             to_trans.FIN = true;
+            to_trans.ACK = true;
+        }
+        else if (now_status == TCPStatus::LAST_ACK)
+        {
+            // 对面已经发送了FIN，我们再发送
+            to_trans.FIN = true;
+            to_trans.ACK = true;
+        }
+        else if (now_status == TCPStatus::CLOSE_WAIT)
+        {
+            // 对方发来FIN
             to_trans.ACK = true;
         }
         else if (now_status == TCPStatus::CLOSING)
@@ -76,8 +87,8 @@ void TCPSender::fill_window()
         // SPONGE
         // 普通情况，不是connection
         else if ( _stream.input_ended() &&
-            _stream.buffer_size() + bytes_in_flight() < window_size_ &&
-            _stream.buffer_size() <= TCPConfig::MAX_PAYLOAD_SIZE )
+                 _stream.buffer_size() + bytes_in_flight() < window_size_ &&
+                 _stream.buffer_size() <= TCPConfig::MAX_PAYLOAD_SIZE )
         {
             // 测试会调用close方法，就关闭了
             to_trans.FIN = true;
@@ -104,7 +115,8 @@ void TCPSender::fill_window()
 
 
         _segments_out.push(to_trans.to_TCPSeg());
-        flying_segments.push( to_trans.to_TCPSeg() );
+        if (push_num + to_trans.SYN + to_trans.FIN != 0) // 如果只有ACK，就不需要重传
+            flying_segments.push( to_trans.to_TCPSeg() );
 
         // 如果不是正常发送情况，那我们不需要重复发送
         if (now_status != TCPStatus::ESTABLISHED)
@@ -170,10 +182,17 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
 void TCPSender::tick(const size_t ms_since_last_tick) 
 {
     // retransmit ackno_ to seqno_ - 1
+    if (now_status == TCPStatus::TIME_WAIT) // 如果是TIME_WAIT，我们就只增加时间
+    {
+        retrans_timer += ms_since_last_tick;
+        return;
+    }
+
+    // 普通情况，空内容不重传。如果进入了TIME_WAIT
     if (flying_segments.empty())
         return;
     retrans_timer += ms_since_last_tick;
-    if ( retrans_timer >= retrans_RTO && now_status != TCPStatus::TIME_WAIT )
+    if ( retrans_timer >= retrans_RTO )
     {
         if (window_size_ != 0 && !zero_window) // 重传时间翻倍
             retrans_RTO <<= 1;
