@@ -32,8 +32,17 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
     if (seg.header().ack)
     {
         // 如果对方没有接收到我们的FIN，那么就不能变成FIN_WAIT_2
-        if (_sender.get_status() == TCPStatus::FIN_WAIT_1 && seg.header().ackno == _sender.next_seqno())
-            _sender.change_status(TCPStatus::FIN_WAIT_2);
+        if (_sender.get_status() == TCPStatus::FIN_WAIT_1)
+        {
+            if (seg.header().ackno == _sender.next_seqno()) // 对我们FIN的确认
+                _sender.change_status(TCPStatus::FIN_WAIT_2);
+            else if (seg.header().fin) // 对方发FIN+ACK，但是没有确认我们的FIN
+                _sender.change_status(TCPStatus::CLOSE_WAIT);
+        }
+        else if (_sender.get_status() == TCPStatus::LAST_ACK)  // 对方关闭，我们已发送FIN，现在接到ACK
+        {
+            _sender.change_status(TCPStatus::TIME_WAIT);
+        }
     }
     if (seg.header().fin)
     {
@@ -74,9 +83,9 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
 // close的时候调用它
 void TCPConnection::end_input_stream() {
     // 我发送了就是FIN_WAIT_1，其他的等接收了再说
-    if (_sender.get_status() == TCPStatus::CLOSE_WAIT)
+    if (_sender.get_status() == TCPStatus::CLOSE_WAIT) // 对方发过FIN，我们发ACK了，现在我们要FIN
         _sender.change_status(TCPStatus::LAST_ACK);
-    else
+    else // 对方没FIN，我们FIN
         _sender.change_status(TCPStatus::FIN_WAIT_1);
 
     send_front_seg();

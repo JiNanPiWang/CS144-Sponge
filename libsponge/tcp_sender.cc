@@ -36,7 +36,6 @@ void TCPSender::fill_window()
     while (bytes_in_flight() < window_size_ || (now_status != TCPStatus::CLOSED && _stream.input_ended()) )
     {
         // FIN会是最后一个消息
-        // TODO: CLOSED需不需要考虑？
         if (now_status == TCPStatus::CLOSED)
             return;
         TCPSenderMessage to_trans { seqno_, false, "", false, false };
@@ -79,6 +78,10 @@ void TCPSender::fill_window()
             // 在这最后一个ACK发出后，客户端通常会进入TIME_WAIT状态，等待足够的时间以确保服务器收到了最后的确认，然后最终关闭连接。
             now_status = TCPStatus::TIME_WAIT;
             _stream.end_input();
+        }
+        else if (now_status == TCPStatus::TIME_WAIT)
+        {
+            return;
         }
         // 已经被关闭了，准备FIN，且有空间发FIN；如果buffer大于等于window，那就是普通情况，等一下再发FIN
         // FIN不占payload的size，但是占window
@@ -194,6 +197,8 @@ void TCPSender::tick(const size_t ms_since_last_tick)
     retrans_timer += ms_since_last_tick;
     if ( retrans_timer >= retrans_RTO )
     {
+        if (now_status == TCPStatus::CLOSE_WAIT)
+            now_status = TCPStatus::LAST_ACK;
         if (window_size_ != 0 && !zero_window) // 重传时间翻倍
             retrans_RTO <<= 1;
 
