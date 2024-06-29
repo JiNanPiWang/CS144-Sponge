@@ -61,6 +61,10 @@ void TCPSender::fill_window()
             to_trans.FIN = true;
             to_trans.ACK = true;
         }
+        else if (now_status == TCPStatus::FIN_WAIT_2)
+        {
+            return;
+        }
         else if (now_status == TCPStatus::LAST_ACK)
         {
             // 对面已经发送了FIN，我们再发送
