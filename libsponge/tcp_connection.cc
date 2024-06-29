@@ -80,6 +80,7 @@ void TCPConnection::end_input_stream() {
         _sender.change_status(TCPStatus::FIN_WAIT_1);
 
     send_front_seg();
+    _sender.stream_in().end_input();
 }
 
 void TCPConnection::connect() {
