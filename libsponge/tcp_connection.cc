@@ -29,12 +29,20 @@ size_t TCPConnection::time_since_last_segment_received() const {
 }
 
 void TCPConnection::segment_received(const TCPSegment &seg) {
+    bool only_ack = false;
+    if (seg.header().fin + seg.header().syn + seg.header().urg + seg.header().psh + seg.header().rst == 0 &&
+        seg.payload().size() == 0 &&
+        seg.header().ack == 1)
+        only_ack = true;
+
     last_segment_received_time = 0;
     if (seg.header().syn)
         _sender.change_status(TCPStatus::SYN_RCVD);
-    if (seg.header().fin + seg.header().syn + seg.header().urg + seg.header().psh + seg.header().rst == 0 &&
-        seg.header().ack == 1 && seg.header().ackno != _sender.next_seqno())
-        return; // 如果一个只有ACK的信息且ACK号错误，就不算
+    if (only_ack && seg.header().ackno != _sender.next_seqno())
+    {
+        // 如果一个只有ACK的信息且ACK号错误，就不算
+        return;
+    }
     if (seg.header().ack && seg.header().ackno == _sender.next_seqno())
     {
         // 如果对方没有接收到我们的FIN，那么就不能变成FIN_WAIT_2
@@ -52,7 +60,6 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
     }
     if (seg.header().fin)
     {
-        // TODO: 被动关闭待补充
         if (_sender.get_status() == TCPStatus::FIN_WAIT_2) // 我们发送了
             _sender.change_status(TCPStatus::CLOSING);
         else if (_sender.get_status() != TCPStatus::TIME_WAIT)  // 我们没发送，对面发了FIN
@@ -64,10 +71,13 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
         else if (_sender.get_status() == TCPStatus::TIME_WAIT)
             _sender.change_status(TCPStatus::CLOSING);
     }
+    if (only_ack && _sender.get_status() == TCPStatus::ESTABLISHED)
+        _sender.change_status(TCPStatus::ESTABLISHED_ACK);
     _sender.ack_received(seg.header().ackno, seg.header().win);
     _receiver.segment_received(seg);
 
-    send_front_seg();
+    if (!only_ack) // 如果对方发的内容只有ACK，我们不回应
+        send_front_seg();
 }
 
 bool TCPConnection::active() const {

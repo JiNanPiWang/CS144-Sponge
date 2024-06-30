@@ -68,6 +68,7 @@ enum class TCPStatus {
     SYN_RCVD,     //!< Got the peer's SYN
     SYN_SENT,     //!< Sent a SYN to initiate a connection
     ESTABLISHED,  //!< Three-way handshake complete
+    ESTABLISHED_ACK,  //!< Three-way handshake complete。对方发来普通消息，我们需要发ACK确认
     CLOSE_WAIT,   //!< Remote side has sent a FIN, connection is half-open，对方发了FIN，现在我们发ACK
     LAST_ACK,     //!< Local side sent a FIN from CLOSE_WAIT, waiting for ACK，对方已经发来了FIN，我们发过ACK，现在我们发了FIN，等ACK
     FIN_WAIT_1,   //!< Sent a FIN to the remote side, not yet ACK'd

@@ -55,6 +55,11 @@ void TCPSender::fill_window()
             to_trans.ACK = true;
             now_status = TCPStatus::ESTABLISHED;
         }
+        else if (now_status == TCPStatus::ESTABLISHED_ACK)
+        {
+            to_trans.ACK = true;
+            now_status = TCPStatus::ESTABLISHED;
+        }
         else if (now_status == TCPStatus::FIN_WAIT_1)
         {
             // 我们主动发送FIN，还确认了已经接收并处理了服务器到目前为止发送的所有数据，也就是ACK=1。
