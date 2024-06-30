@@ -47,7 +47,12 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
 
     last_segment_received_time = 0;
     if (seg.header().syn)
-        _sender.change_status(TCPStatus::SYN_RCVD);
+    {
+        if (_sender.get_status() == TCPStatus::SYN_SENT && !seg.header().ack) // 我们发了SYN，它没收到，然后它发了一个SYN
+            _sender.change_status(TCPStatus::ESTABLISHED_ACK);
+        else
+            _sender.change_status(TCPStatus::SYN_RCVD);
+    }
     if (only_ack && seg.header().ackno != _sender.next_seqno())
     {
         // 如果一个只有ACK的信息且ACK号错误，就不算

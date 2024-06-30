@@ -33,7 +33,9 @@ uint64_t TCPSender::bytes_in_flight() const {
 
 void TCPSender::fill_window() 
 {
-    while (bytes_in_flight() < window_size_ || (now_status != TCPStatus::CLOSED && _stream.input_ended()) )
+    // 只发ACK也行
+    while (bytes_in_flight() < window_size_ || (now_status != TCPStatus::CLOSED && _stream.input_ended()) ||
+           now_status == TCPStatus::ESTABLISHED_ACK)
     {
         // FIN会是最后一个消息
         if (now_status == TCPStatus::CLOSED)
