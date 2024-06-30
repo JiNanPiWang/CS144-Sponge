@@ -32,15 +32,15 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
     last_segment_received_time = 0;
     if (seg.header().syn)
         _sender.change_status(TCPStatus::SYN_RCVD);
-    if (seg.header().ack)
+    if (seg.header().fin + seg.header().syn + seg.header().urg + seg.header().psh + seg.header().rst == 0 &&
+        seg.header().ack == 1 && seg.header().ackno != _sender.next_seqno())
+        return; // 如果一个只有ACK的信息且ACK号错误，就不算
+    if (seg.header().ack && seg.header().ackno == _sender.next_seqno())
     {
         // 如果对方没有接收到我们的FIN，那么就不能变成FIN_WAIT_2
         if (_sender.get_status() == TCPStatus::FIN_WAIT_1)
         {
-            if (seg.header().ackno == _sender.next_seqno()) // 对我们FIN的确认
-                _sender.change_status(TCPStatus::FIN_WAIT_2);
-            else if (seg.header().fin) // 对方发FIN+ACK，但是没有确认我们的FIN
-                _sender.change_status(TCPStatus::CLOSE_WAIT);
+            _sender.change_status(TCPStatus::FIN_WAIT_2);
         }
         else if (_sender.get_status() == TCPStatus::LAST_ACK)  // 对方关闭，我们已发送FIN，现在接到ACK
         {
