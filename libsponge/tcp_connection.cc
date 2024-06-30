@@ -29,6 +29,16 @@ size_t TCPConnection::time_since_last_segment_received() const {
 }
 
 void TCPConnection::segment_received(const TCPSegment &seg) {
+
+    if (seg.header().rst)
+    {
+        _sender.stream_in().set_error();
+        _receiver.stream_out().set_error();
+        _linger_after_streams_finish = false;
+        _sender.change_status(TCPStatus::RESET);
+        return;
+    }
+
     bool only_ack = false;
     if (seg.header().fin + seg.header().syn + seg.header().urg + seg.header().psh + seg.header().rst == 0 &&
         seg.payload().size() == 0 &&
@@ -81,9 +91,9 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
 }
 
 bool TCPConnection::active() const {
-    // auto sta = _sender.get_status();
-    // return sta != TCPStatus::CLOSED;
-    return  _sender.get_status() != TCPStatus::CLOSED;
+    if (_sender.get_status() == TCPStatus::CLOSED || _sender.get_status() == TCPStatus::RESET)
+        return false;
+    return true;
 }
 
 size_t TCPConnection::write(const string &data) {
