@@ -44,7 +44,10 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
         }
         else if (_sender.get_status() == TCPStatus::LAST_ACK)  // 对方关闭，我们已发送FIN，现在接到ACK
         {
-            _sender.change_status(TCPStatus::TIME_WAIT);
+            if (!is_active_close) // 被动关闭
+                _sender.change_status(TCPStatus::CLOSED);
+            else
+                _sender.change_status(TCPStatus::TIME_WAIT);
         }
     }
     if (seg.header().fin)
@@ -52,8 +55,12 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
         // TODO: 被动关闭待补充
         if (_sender.get_status() == TCPStatus::FIN_WAIT_2) // 我们发送了
             _sender.change_status(TCPStatus::CLOSING);
-        else if (_sender.get_status() != TCPStatus::TIME_WAIT) // 我们没发送，对面发了FIN
+        else if (_sender.get_status() != TCPStatus::TIME_WAIT)  // 我们没发送，对面发了FIN
+        {
             _sender.change_status(TCPStatus::CLOSE_WAIT);
+            if (!is_active_close)
+                _linger_after_streams_finish = false; // 被动关闭
+        }
         else if (_sender.get_status() == TCPStatus::TIME_WAIT)
             _sender.change_status(TCPStatus::CLOSING);
     }
@@ -66,7 +73,7 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
 bool TCPConnection::active() const {
     // auto sta = _sender.get_status();
     // return sta != TCPStatus::CLOSED;
-    return _linger_after_streams_finish;
+    return  _sender.get_status() != TCPStatus::CLOSED;
 }
 
 size_t TCPConnection::write(const string &data) {
@@ -89,10 +96,16 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
 // close的时候调用它
 void TCPConnection::end_input_stream() {
     // 我发送了就是FIN_WAIT_1，其他的等接收了再说
-    if (_sender.get_status() == TCPStatus::CLOSE_WAIT) // 对方发过FIN，我们发ACK了，现在我们要FIN
+    if (_sender.get_status() == TCPStatus::CLOSE_WAIT) // 对方发过FIN，我们发ACK了，现在我们要FIN，这是被动关闭
+    {
         _sender.change_status(TCPStatus::LAST_ACK);
+        _linger_after_streams_finish = false; // 对方先发FIN，就是被动关闭
+    }
     else // 对方没FIN，我们FIN
+    {
         _sender.change_status(TCPStatus::FIN_WAIT_1);
+        is_active_close = true;
+    }
 
     send_front_seg();
     _sender.stream_in().end_input();

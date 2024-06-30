@@ -25,6 +25,8 @@ class TCPConnection {
 
     size_t last_segment_received_time{0};
 
+    bool is_active_close{false}; // 假设我们不是主动关闭
+
   public:
     //! \name "Input" interface for the writer
     //!@{
