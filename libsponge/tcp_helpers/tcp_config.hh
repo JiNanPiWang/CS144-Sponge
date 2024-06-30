@@ -72,7 +72,7 @@ enum class TCPStatus {
     LAST_ACK,     //!< Local side sent a FIN from CLOSE_WAIT, waiting for ACK，对方已经发来了FIN，我们发过ACK，现在我们发了FIN，等ACK
     FIN_WAIT_1,   //!< Sent a FIN to the remote side, not yet ACK'd
     FIN_WAIT_2,   //!< Received an ACK for previously-sent FIN
-    CLOSING,      //!< Received a FIN just after we sent one，还要发ACK
+    CLOSING,      //!< Received a FIN just after we sent one，我们发过了FIN，对方现在发FIN了，我们还要发ACK
     TIME_WAIT,    //!< Both sides have sent FIN and ACK'd, waiting for 2 MSL
     CLOSED,       //!< A connection that has terminated normally
     RESET,        //!< A connection that terminated abnormally

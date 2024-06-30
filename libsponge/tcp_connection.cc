@@ -52,8 +52,10 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
         // TODO: 被动关闭待补充
         if (_sender.get_status() == TCPStatus::FIN_WAIT_2) // 我们发送了
             _sender.change_status(TCPStatus::CLOSING);
-        else // 我们没发送，对面发了FIN
+        else if (_sender.get_status() != TCPStatus::TIME_WAIT) // 我们没发送，对面发了FIN
             _sender.change_status(TCPStatus::CLOSE_WAIT);
+        else if (_sender.get_status() == TCPStatus::TIME_WAIT)
+            _sender.change_status(TCPStatus::CLOSING);
     }
     _sender.ack_received(seg.header().ackno, seg.header().win);
     _receiver.segment_received(seg);
