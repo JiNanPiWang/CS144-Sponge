@@ -28,9 +28,6 @@ class TCPSender {
     unsigned int retrans_cnt = 0;
     unsigned int retrans_timer = 0;
 
-  public:
-    unsigned int get_retrans_timer() const;
-
   private:
     unsigned int retrans_RTO = 0;
 

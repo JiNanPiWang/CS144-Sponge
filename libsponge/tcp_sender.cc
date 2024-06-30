@@ -244,6 +244,3 @@ void TCPSender::change_status(TCPStatus status) {
 TCPStatus TCPSender::get_status() const {
     return now_status;
 }
-unsigned int TCPSender::get_retrans_timer() const {
-    return retrans_timer;
-}

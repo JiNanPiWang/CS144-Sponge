@@ -79,7 +79,7 @@ void TCPConnection::tick(const size_t ms_since_last_tick) {
     last_segment_received_time += ms_since_last_tick;
     _sender.tick(ms_since_last_tick);
     send_front_seg(true);
-    if (_sender.get_retrans_timer() >= _cfg.rt_timeout * 10)
+    if (time_since_last_segment_received() >= _cfg.rt_timeout * 10)
     {
         _linger_after_streams_finish = false;
         _sender.change_status(TCPStatus::CLOSED);
