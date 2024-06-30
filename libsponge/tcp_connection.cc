@@ -71,7 +71,7 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
         else if (_sender.get_status() == TCPStatus::TIME_WAIT)
             _sender.change_status(TCPStatus::CLOSING);
     }
-    if (only_ack && _sender.get_status() == TCPStatus::ESTABLISHED)
+    if (!only_ack && _sender.get_status() == TCPStatus::ESTABLISHED)
         _sender.change_status(TCPStatus::ESTABLISHED_ACK);
     _sender.ack_received(seg.header().ackno, seg.header().win);
     _receiver.segment_received(seg);
