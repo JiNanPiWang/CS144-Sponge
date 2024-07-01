@@ -94,6 +94,10 @@ void TCPSender::fill_window()
         {
             return;
         }
+        else if (now_status == TCPStatus::RESET)
+        {
+            to_trans.RST = true;
+        }
         // 已经被关闭了，准备FIN，且有空间发FIN；如果buffer大于等于window，那就是普通情况，等一下再发FIN
         // FIN不占payload的size，但是占window
         // 需要考虑MAX_PAYLOAD_SIZE，要不然一个10000大小的payload，分成10次发，会每次都带FIN
@@ -117,7 +121,7 @@ void TCPSender::fill_window()
         push_num = min( push_num, window_size_ - bytes_in_flight() - to_trans.SYN);
         push_num = min( push_num, TCPConfig::MAX_PAYLOAD_SIZE );
 
-        if ( push_num + to_trans.SYN + to_trans.FIN + to_trans.ACK == 0) // 如果所有内容全空，规格错误，就不发送
+        if ( push_num + to_trans.SYN + to_trans.FIN + to_trans.ACK + to_trans.RST == 0) // 如果所有内容全空，规格错误，就不发送
             return;
 
         string pop_str = _stream.read(push_num);

@@ -102,8 +102,7 @@ bool TCPConnection::active() const {
 }
 
 size_t TCPConnection::write(const string &data) {
-    DUMMY_CODE(data);
-    return {};
+    return _sender.stream_in().write(data);
 }
 
 //! \param[in] ms_since_last_tick number of milliseconds since the last call to this method
@@ -143,8 +142,9 @@ void TCPConnection::connect() {
 TCPConnection::~TCPConnection() {
     try {
         if (active()) {
+            _sender.change_status(TCPStatus::RESET);
+            send_front_seg();
             cerr << "Warning: Unclean shutdown of TCPConnection\n";
-
             // Your code here: need to send a RST segment to the peer
         }
     } catch (const exception &e) {
