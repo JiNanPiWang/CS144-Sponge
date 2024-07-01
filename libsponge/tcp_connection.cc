@@ -93,7 +93,8 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
     _sender.ack_received_with_state(seg.header().ackno, seg.header().win);
     _receiver.segment_received(seg);
 
-    if (!only_ack) // 如果对方发的内容只有ACK，我们不回应
+    // 如果对方发的内容只有ACK，我们不回应，但是我们要发东西除外
+    if (!only_ack || !_sender.stream_in().buffer_empty())
         send_front_seg();
 }
 
@@ -160,7 +161,7 @@ TCPConnection::~TCPConnection() {
 void TCPConnection::send_front_seg(bool without_fill_window) {
     if (!without_fill_window)
         _sender.fill_window_with_state();
-    if (!_sender.segments_out().empty())
+    while (!_sender.segments_out().empty())
     {
         auto to_send_seg = _sender.segments_out().front();
         _sender.segments_out().pop();
