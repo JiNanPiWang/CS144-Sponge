@@ -187,8 +187,10 @@ void TCPSender::fill_window_with_state() {
         if (push_num + to_trans.SYN + to_trans.FIN != 0) // 如果只有ACK，就不需要重传
             flying_segments.push( to_trans.to_TCPSeg() );
 
-        // 如果不是正常发送情况，那我们不需要重复发送
-        if (now_status != TCPStatus::ESTABLISHED || push_num == 0)
+        // 如果不是正常发送情况，那我们不需要重复发送。或者我们buffer的内容空了或者window满了也不发了
+        if (now_status != TCPStatus::ESTABLISHED ||
+                _stream.buffer_empty() ||
+                (!_stream.buffer_empty() && bytes_in_flight() >= window_size_))
             break;
     }
 }
