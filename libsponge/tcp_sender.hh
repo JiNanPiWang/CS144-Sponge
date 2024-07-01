@@ -64,12 +64,14 @@ class TCPSender {
 
     //! \brief A new acknowledgment was received
     void ack_received(const WrappingInt32 ackno, const uint16_t window_size);
+    void ack_received_with_state(const WrappingInt32 ackno, const uint16_t window_size);
 
     //! \brief Generate an empty-payload segment (useful for creating empty ACK segments)
     void send_empty_segment();
 
     //! \brief create and send segments to fill as much of the window as possible
     void fill_window();
+    void fill_window_with_state();
 
     //! \brief Notifies the TCPSender of the passage of time
     void tick(const size_t ms_since_last_tick);

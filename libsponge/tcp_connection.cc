@@ -49,10 +49,10 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
     if (seg.header().syn)
     {
         if (_sender.get_status() == TCPStatus::SYN_SENT && !seg.header().ack) // 我们发了SYN，它没收到，然后它发了一个SYN
-            _sender.change_status(TCPStatus::ESTABLISHED_ACK);
-        else if (!seg.header().ack) // 只发SYN
+            _sender.change_status(TCPStatus::ESTABLISHED);
+        else if (seg.header().syn && !seg.header().ack) // 对方只发SYN
             _sender.change_status(TCPStatus::SYN_RCVD);
-        else // 发了SYN+ACK
+        else if (seg.header().syn && seg.header().ack) // 对方发了SYN+ACK
             _sender.change_status(TCPStatus::SYN_ACK_RCVD);
     }
     if (only_ack && seg.header().ackno != _sender.next_seqno())
@@ -74,6 +74,8 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
             else
                 _sender.change_status(TCPStatus::TIME_WAIT);
         }
+        else if (_sender.get_status() == TCPStatus::SYN_SENT && only_ack)
+            _sender.change_status(TCPStatus::ESTABLISHED);
     }
     if (seg.header().fin)
     {
@@ -88,9 +90,7 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
         else if (_sender.get_status() == TCPStatus::TIME_WAIT)
             _sender.change_status(TCPStatus::CLOSING);
     }
-    if (!only_ack && _sender.get_status() == TCPStatus::ESTABLISHED)
-        _sender.change_status(TCPStatus::ESTABLISHED_ACK);
-    _sender.ack_received(seg.header().ackno, seg.header().win);
+    _sender.ack_received_with_state(seg.header().ackno, seg.header().win);
     _receiver.segment_received(seg);
 
     if (!only_ack) // 如果对方发的内容只有ACK，我们不回应
@@ -104,7 +104,9 @@ bool TCPConnection::active() const {
 }
 
 size_t TCPConnection::write(const string &data) {
-    return _sender.stream_in().write(data);
+    auto write_num = _sender.stream_in().write(data);
+    send_front_seg();
+    return write_num;
 }
 
 //! \param[in] ms_since_last_tick number of milliseconds since the last call to this method
@@ -145,6 +147,7 @@ TCPConnection::~TCPConnection() {
     try {
         if (active()) {
             _sender.change_status(TCPStatus::RESET);
+            _sender.stream_in().set_error();
             send_front_seg();
             cerr << "Warning: Unclean shutdown of TCPConnection\n";
             // Your code here: need to send a RST segment to the peer
@@ -156,7 +159,7 @@ TCPConnection::~TCPConnection() {
 
 void TCPConnection::send_front_seg(bool without_fill_window) {
     if (!without_fill_window)
-        _sender.fill_window();
+        _sender.fill_window_with_state();
     if (!_sender.segments_out().empty())
     {
         auto to_send_seg = _sender.segments_out().front();

@@ -33,9 +33,66 @@ uint64_t TCPSender::bytes_in_flight() const {
 
 void TCPSender::fill_window() 
 {
+    while (bytes_in_flight() < window_size_ || (!had_FIN && _stream.input_ended()) )
+    {
+        // FIN会是最后一个消息
+        if (had_FIN)
+            return;
+        TCPSenderMessage to_trans { seqno_, false, "", false, false };
+        if ( _stream.error() )
+            to_trans.RST = true;
+        if ( !has_SYN ) // 还没开始，准备SYN
+        {
+            to_trans.seqno = _isn;
+            to_trans.SYN = true;
+            if (window_size_ == UINT32_MAX) // 如果没被初始化，就初始化
+                window_size_ = 1;
+            has_SYN = true;
+        }
+        // 已经被关闭了，准备FIN，且有空间发FIN；如果buffer大于等于window，那就是普通情况，等一下再发FIN
+        // FIN不占payload的size，但是占window
+        // 需要考虑MAX_PAYLOAD_SIZE，要不然一个10000大小的payload，分成10次发，会每次都带FIN
+
+        // SPONGE
+        if ( _stream.input_ended() &&
+            _stream.buffer_size() + bytes_in_flight() < window_size_ &&
+            _stream.buffer_size() <= TCPConfig::MAX_PAYLOAD_SIZE )
+        {
+            // 测试会调用close方法，就关闭了
+            if ( had_FIN ) // 发过了就不发了
+                return;
+            to_trans.FIN = true;
+            had_FIN = true;
+        }
+
+        // start from last byte + 1，但是如果Bytestream里面只有SYN，那就提取不出来内容，需要取min得到0
+        // push的数量，现在缓存了多少个减去发出还没确认的个数，bytes_buffered肯定是>=bytes_in_flight的
+        // 同时循环也确定了bytes_in_flight() < window_size_，否则不进行push操作
+        // 减to_trans.SYN的原因是可能SYN和data一起，会占一个位置
+        auto push_num = _stream.buffer_size();
+        push_num = min( push_num, window_size_ - bytes_in_flight() - to_trans.SYN);
+        push_num = min( push_num, TCPConfig::MAX_PAYLOAD_SIZE );
+
+        if ( push_num + to_trans.SYN + to_trans.FIN == 0) // 如果所有内容全空，规格错误，就不发送
+            return;
+
+        string pop_str = _stream.read(push_num);
+
+        to_trans.payload = pop_str;
+
+        seqno_ = seqno_ + to_trans.payload.size() + to_trans.SYN + to_trans.FIN;
+        _next_seqno += to_trans.payload.size() + to_trans.SYN + to_trans.FIN;
+
+
+        _segments_out.push(to_trans.to_TCPSeg());
+        flying_segments.push( to_trans.to_TCPSeg() );
+    }
+}
+
+void TCPSender::fill_window_with_state() {
     // 只发ACK也行
     while (bytes_in_flight() < window_size_ || (now_status != TCPStatus::CLOSED && _stream.input_ended()) ||
-           now_status == TCPStatus::ESTABLISHED_ACK)
+           now_status == TCPStatus::ESTABLISHED)
     {
         // FIN会是最后一个消息
         if (now_status == TCPStatus::CLOSED)
@@ -49,24 +106,24 @@ void TCPSender::fill_window()
             to_trans.SYN = true;
             if (window_size_ == UINT32_MAX) // 如果没被初始化，就初始化
                 window_size_ = 1;
-            // has_SYN = true;
             now_status = TCPStatus::SYN_SENT;
         }
         else if (now_status == TCPStatus::SYN_RCVD) // 接收到(syn)，发送(ack+syn)
         {
             to_trans.ACK = true;
             to_trans.SYN = true;
-            now_status = TCPStatus::ESTABLISHED;
+            if (window_size_ == UINT32_MAX) // 如果没被初始化，就初始化
+                window_size_ = 1;
+            now_status = TCPStatus::SYN_SENT;
         }
         else if (now_status == TCPStatus::SYN_ACK_RCVD) // 接收到ack+syn，发送ack
         {
             to_trans.ACK = true;
             now_status = TCPStatus::ESTABLISHED;
         }
-        else if (now_status == TCPStatus::ESTABLISHED_ACK)
+        else if (now_status == TCPStatus::ESTABLISHED)
         {
             to_trans.ACK = true;
-            now_status = TCPStatus::ESTABLISHED;
         }
         else if (now_status == TCPStatus::FIN_WAIT_1)
         {
@@ -108,17 +165,6 @@ void TCPSender::fill_window()
         // FIN不占payload的size，但是占window
         // 需要考虑MAX_PAYLOAD_SIZE，要不然一个10000大小的payload，分成10次发，会每次都带FIN
 
-        // SPONGE
-        // 普通情况，不是connection
-        else if ( _stream.input_ended() &&
-                 _stream.buffer_size() + bytes_in_flight() < window_size_ &&
-                 _stream.buffer_size() <= TCPConfig::MAX_PAYLOAD_SIZE )
-        {
-            // 测试会调用close方法，就关闭了
-            to_trans.FIN = true;
-            now_status = TCPStatus::CLOSED;
-        }
-        
         // start from last byte + 1，但是如果Bytestream里面只有SYN，那就提取不出来内容，需要取min得到0
         // push的数量，现在缓存了多少个减去发出还没确认的个数，bytes_buffered肯定是>=bytes_in_flight的
         // 同时循环也确定了bytes_in_flight() < window_size_，否则不进行push操作
@@ -137,13 +183,12 @@ void TCPSender::fill_window()
         seqno_ = seqno_ + to_trans.payload.size() + to_trans.SYN + to_trans.FIN;
         _next_seqno += to_trans.payload.size() + to_trans.SYN + to_trans.FIN;
 
-
         _segments_out.push(to_trans.to_TCPSeg());
         if (push_num + to_trans.SYN + to_trans.FIN != 0) // 如果只有ACK，就不需要重传
             flying_segments.push( to_trans.to_TCPSeg() );
 
         // 如果不是正常发送情况，那我们不需要重复发送
-        if (now_status != TCPStatus::ESTABLISHED)
+        if (now_status != TCPStatus::ESTABLISHED || push_num == 0)
             break;
     }
 }
@@ -151,6 +196,54 @@ void TCPSender::fill_window()
 //! \param ackno The remote receiver's ackno (acknowledgment number)
 //! \param window_size The remote receiver's advertised window size
 void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_size) {
+    // receive后，测试的调用会自动触发push
+    if (has_SYN) {
+
+        auto &new_ackno = ackno;
+        auto &first_fly_ele = flying_segments.front();
+        // ackno不能大于seqno
+        if (unwrap_seq_num(new_ackno) > unwrap_seq_num(seqno_))
+            return;
+        // 新的ack也不能小于老的ack，否则无效
+        if ( unwrap_seq_num(new_ackno) < unwrap_seq_num(ackno_))
+            return;
+        // 接收过的信息就不接收了，也就是现在收到的ack必须大于fly第一个的ack，除非要发FIN
+        if (!flying_segments.empty() && unwrap_seq_num(new_ackno) <= unwrap_seq_num(first_fly_ele.header().seqno) &&
+            !_stream.input_ended())
+            return;
+        // 如果接收的ack不够弹出fly的第一个块，那么ack不算数
+        if (!flying_segments.empty() &&
+            unwrap_seq_num(new_ackno) > unwrap_seq_num(ackno_) &&
+            unwrap_seq_num(new_ackno) - unwrap_seq_num(ackno_) <
+                first_fly_ele.payload().size() + first_fly_ele.header().syn + first_fly_ele.header().fin)
+            return;
+
+        // 如果发过来的不是对SYN的ACK，我们才pop，syn和data和fin一起
+        if (unwrap_seq_num(ackno_) == 0)
+            ackno_ = ackno_ + 1;
+
+        ackno_ = ackno;
+
+        // 当前ackno已经超过了之前的
+        while (!flying_segments.empty() && unwrap_seq_num(ackno_) > unwrap_seq_num(flying_segments.front().header().seqno))
+            flying_segments.pop();
+    }
+    if (window_size != 0)
+    {
+        window_size_ = window_size;
+        retrans_cnt = 0;
+        retrans_timer = 0;
+        retrans_RTO = _initial_retransmission_timeout;
+        zero_window = false;
+    }
+    else // window_size = 0，特判
+    {
+        window_size_ = 1;
+        zero_window = true;
+    }
+}
+
+void TCPSender::ack_received_with_state(const WrappingInt32 ackno, const uint16_t window_size) {
     // receive后，测试的调用会自动触发push
     if (now_status != TCPStatus::LISTEN) {
         auto &new_ackno = ackno;
@@ -201,6 +294,7 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         zero_window = true;
     }
 }
+
 
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method
 void TCPSender::tick(const size_t ms_since_last_tick) 
