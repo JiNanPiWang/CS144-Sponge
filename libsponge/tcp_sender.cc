@@ -52,7 +52,13 @@ void TCPSender::fill_window()
             // has_SYN = true;
             now_status = TCPStatus::SYN_SENT;
         }
-        else if (now_status == TCPStatus::SYN_RCVD) // 接收到ack+syn(ack)，发送ack(ack+syn)
+        else if (now_status == TCPStatus::SYN_RCVD) // 接收到(syn)，发送(ack+syn)
+        {
+            to_trans.ACK = true;
+            to_trans.SYN = true;
+            now_status = TCPStatus::ESTABLISHED;
+        }
+        else if (now_status == TCPStatus::SYN_ACK_RCVD) // 接收到ack+syn，发送ack
         {
             to_trans.ACK = true;
             now_status = TCPStatus::ESTABLISHED;
@@ -171,7 +177,7 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         {
             // ackno_ = ackno_ + 1;
             // 如果connection没有改变状态，就是默认情况，直接连接
-            if (now_status != TCPStatus::SYN_RCVD)
+            if (now_status != TCPStatus::SYN_RCVD && now_status != TCPStatus::SYN_ACK_RCVD)
                 now_status = TCPStatus::ESTABLISHED;
         }
 

@@ -66,6 +66,7 @@ struct TCPSenderMessage
 enum class TCPStatus {
     LISTEN = 0,   //!< Listening for a peer to connect
     SYN_RCVD,     //!< Got the peer's SYN
+    SYN_ACK_RCVD,     //!< Got the peer's SYN
     SYN_SENT,     //!< Sent a SYN to initiate a connection
     ESTABLISHED,  //!< Three-way handshake complete
     ESTABLISHED_ACK,  //!< Three-way handshake complete。对方发来普通消息，我们需要发ACK确认
