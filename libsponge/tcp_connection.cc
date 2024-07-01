@@ -55,9 +55,10 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
         else if (seg.header().syn && seg.header().ack) // 对方发了SYN+ACK
             _sender.change_status(TCPStatus::SYN_ACK_RCVD);
     }
-    if (only_ack && seg.header().ackno != _sender.next_seqno())
+    uint64_t now_ack = _sender.unwrap_seq_num(_sender.get_ackno());
+    if (only_ack && unwrap(seg.header().ackno, _sender.get_isn(), now_ack) < now_ack)
     {
-        // 如果一个只有ACK的信息且ACK号错误，就不算
+        // 如果一个只有ACK的信息且ACK号小于当前ACK，就不算
         return;
     }
     if (seg.header().ack && seg.header().ackno == _sender.next_seqno())

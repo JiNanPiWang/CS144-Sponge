@@ -357,3 +357,11 @@ void TCPSender::change_status(TCPStatus status) {
 TCPStatus TCPSender::get_status() const {
     return now_status;
 }
+
+const WrappingInt32 &TCPSender::get_ackno() const {
+    return ackno_;
+}
+
+const WrappingInt32 &TCPSender::get_isn() const {
+    return _isn;
+}

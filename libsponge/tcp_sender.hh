@@ -27,8 +27,6 @@ class TCPSender {
     unsigned int _initial_retransmission_timeout;
     unsigned int retrans_cnt = 0;
     unsigned int retrans_timer = 0;
-
-  private:
     unsigned int retrans_RTO = 0;
 
     //! outgoing stream of bytes that have not yet been sent
@@ -109,6 +107,9 @@ class TCPSender {
     void change_status(TCPStatus status);
 
     TCPStatus get_status() const;
+
+    const WrappingInt32 &get_ackno() const;
+    const WrappingInt32 &get_isn() const;
 };
 
 
