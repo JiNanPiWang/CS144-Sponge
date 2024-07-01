@@ -114,8 +114,21 @@ size_t TCPConnection::write(const string &data) {
 void TCPConnection::tick(const size_t ms_since_last_tick) {
     last_segment_received_time += ms_since_last_tick;
     _sender.tick(ms_since_last_tick);
-    send_front_seg(true);
-    if (time_since_last_segment_received() >= _cfg.rt_timeout * 10)
+
+    if (_sender.consecutive_retransmissions() > TCPConfig::MAX_RETX_ATTEMPTS)
+    {
+        // 我们需要直接发送RST，不能去队列最前面内容发送，因为是强行停止，队列里面还有没发的内容
+        make_send_RST();
+        _sender.stream_in().set_error();
+        _receiver.stream_out().set_error();
+        _sender.change_status(TCPStatus::RESET);
+        return;
+    }
+
+    send_front_seg(true); // tick如果要重传，就把内容放入_segment...，我们直接发这个，不用去push
+    if (time_since_last_segment_received() >= _cfg.rt_timeout * 10 &&
+        _sender.stream_in().eof() &&
+        _receiver.stream_out().eof())
     {
         _linger_after_streams_finish = false;
         _sender.change_status(TCPStatus::CLOSED);
@@ -147,9 +160,10 @@ void TCPConnection::connect() {
 TCPConnection::~TCPConnection() {
     try {
         if (active()) {
+            make_send_RST();
             _sender.change_status(TCPStatus::RESET);
             _sender.stream_in().set_error();
-            send_front_seg();
+            _receiver.stream_out().set_error();
             cerr << "Warning: Unclean shutdown of TCPConnection\n";
             // Your code here: need to send a RST segment to the peer
         }
@@ -159,7 +173,7 @@ TCPConnection::~TCPConnection() {
 }
 
 void TCPConnection::send_front_seg(bool without_fill_window) {
-    if (!without_fill_window)
+    if (!without_fill_window) // 参数详见TCPConnection::tick
         _sender.fill_window_with_state();
     while (!_sender.segments_out().empty())
     {
@@ -173,4 +187,14 @@ void TCPConnection::send_front_seg(bool without_fill_window) {
 
         _segments_out.push(to_send_seg);
     }
+}
+
+void TCPConnection::make_send_RST() {
+    TCPSenderMessage to_trans { _sender.next_seqno(), false, "", false, false };
+    to_trans.RST = true;
+    auto to_send_seg = to_trans.to_TCPSeg();
+    if (_receiver.ackno().has_value())
+        to_send_seg.header().ackno = _receiver.ackno().value();
+    to_send_seg.header().win = _receiver.window_size();
+    _segments_out.push(to_send_seg);
 }
